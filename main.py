@@ -90,7 +90,7 @@ async def upload_file(
         
         # 確認只有允許的文件
         if not root_files.issubset(allowed_files):
-            raise HTTPException(status_code=400, detail="Zip file contains invalid files.")
+            raise HTTPException(status_code=400, detail="Zip file contains invalid files.") 
         
  
         
