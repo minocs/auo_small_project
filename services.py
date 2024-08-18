@@ -10,7 +10,7 @@ import database as _database, models as _models, schemas as _schemas
  
 oauth2schema = _security.OAuth2PasswordBearer(tokenUrl="/token")
  
-JWT_SECRET = "cairocodersednalan"
+JWT_SECRET = "sean@auosmallproject"
  
 def create_database():
     return _database.Base.metadata.create_all(bind=_database.engine)
@@ -60,7 +60,7 @@ async def get_current_user(
         user = db.query(_models.User).get(payload["id"])
     except:
         raise _fastapi.HTTPException(
-            status_code=401, detail="Invalid Email or Password"
+            status_code=401, detail="Invalid Username or Password"
         )
  
     return _schemas.User.from_orm(user)

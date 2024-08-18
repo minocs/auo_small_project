@@ -6,4 +6,5 @@ pyjwt
 python_jwt
 python-multipart
 passlib
+cryptography
 
