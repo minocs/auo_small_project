@@ -21,7 +21,8 @@ db =_database.SessionLocal()
 key = Fernet.generate_key()
 cipher_suite = Fernet(key)
 
-@app.post("/api/users")
+"""
+@app.post("/users/new")
 async def create_user(
     user: _schemas.UserCreate, db: _orm.Session = _fastapi.Depends(_services.get_db)
 ):
@@ -32,7 +33,8 @@ async def create_user(
     user = await _services.create_user(user, db)
  
     return await _services.create_token(user)
- 
+"""
+     
 @app.post("/token")
 async def Login(
     form_data: _security.OAuth2PasswordRequestForm = _fastapi.Depends(),
@@ -47,11 +49,11 @@ async def Login(
  
     return await _services.create_token(user)
  
- 
+""" 
 @app.get("/users/me", response_model=_schemas.User)
 async def Read_Users_Me(user: _schemas.User = _fastapi.Depends(_services.get_current_user)):
     return user
-
+"""
 
 def verify_token(token: str = Depends(oauth2schema)):
     # 這裡會執行 JWT 驗證邏輯
@@ -141,3 +143,39 @@ async def upload_file(
         db.refresh(upload_obj) 
         
     return {"valid status": _valid_status, "message": _msg, "filename": zip_filename}
+
+
+
+@app.get("/upload_records", response_model=List[_schemas.UploadRecord])
+async def get_upload_records(
+    db: _orm.Session = _fastapi.Depends(_services.get_db),
+    user: _schemas.User = _fastapi.Depends(_services.get_current_user)
+    ):
+    
+    try:
+        # 查詢 Upload 表，並與 User 表和 File 表聯結
+        results = db.query(
+            _models.User.user_name,
+            _models.File.file_name,
+            _models.File.valid_status,
+            _models.Upload.created_dt
+        ).join(
+            _models.File, _models.Upload.file_id == _models.File.id
+        ).join(
+            _models.User, _models.Upload.user_id == _models.User.id
+        ).all()
+        
+        # 將查詢結果轉換為 jason format
+        records = [
+            {
+                "user_name": result[0],
+                "file_name": result[1],
+                "valid_status": result[2],
+                "created_dt": result[3]
+            }
+            for result in results
+        ]
+        
+        return records
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

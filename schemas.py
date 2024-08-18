@@ -20,3 +20,9 @@ class User(_UserBase):
  
     class Config:
         orm_mode = True
+
+class UploadRecord(_UserBase):
+    user_name: str
+    file_name: str
+    valid_status: str
+    created_dt: str      
