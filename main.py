@@ -86,11 +86,11 @@ async def upload_file(
         
         # 檢查是否包含必須的 A.txt 和 B.txt
         if 'A.txt' not in root_files or 'B.txt' not in root_files:
-            raise HTTPException(status_code=400, detail="Zip file must contain A.txt and B.txt.")
+            raise HTTPException(status_code=200, detail="Zip file must contain A.txt and B.txt.")
         
         # 確認只有允許的文件
         if not root_files.issubset(allowed_files):
-            raise HTTPException(status_code=400, detail="Zip file contains invalid files.") 
+            raise HTTPException(status_code=200, detail="Zip file contains invalid files.") 
         
  
         
