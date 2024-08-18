@@ -9,20 +9,30 @@ from cryptography.fernet import Fernet
 import fastapi as _fastapi
 import fastapi.security as _security
 import sqlalchemy.orm as _orm
-import services as _services, schemas as _schemas, models as _models
+import services as _services, schemas as _schemas, models as _models, database as _database
  
 app = _fastapi.FastAPI()
 
 oauth2schema = _security.OAuth2PasswordBearer(tokenUrl="/token")
 
-user_id = ''
+db =_database.SessionLocal()
 
 # 生成密鑰並創建加密套件
 key = Fernet.generate_key()
 cipher_suite = Fernet(key)
 
-
-
+@app.post("/api/users")
+async def create_user(
+    user: _schemas.UserCreate, db: _orm.Session = _fastapi.Depends(_services.get_db)
+):
+    db_user = await _services.get_user_info(user.user_name, db)
+    if db_user:
+        raise _fastapi.HTTPException(status_code=400, detail="user_name already in use")
+ 
+    user = await _services.create_user(user, db)
+ 
+    return await _services.create_token(user)
+ 
 @app.post("/token")
 async def Login(
     form_data: _security.OAuth2PasswordRequestForm = _fastapi.Depends(),
@@ -51,6 +61,7 @@ def verify_token(token: str = Depends(oauth2schema)):
 async def upload_file(
     file: UploadFile = File(...), 
     token: dict = Depends(verify_token),
+    current_user: _models.User = Depends(_services.get_current_user),
 ):
     # 檢查是否為 zip 檔案
     if not file.filename.endswith('.zip'):
@@ -59,12 +70,39 @@ async def upload_file(
     # 解壓縮並檢查內容
     contents = await file.read()
     with ZipFile(BytesIO(contents)) as zip_file:
+            
+        # 預設訊息    
+        _msg = 'No error'
+        _valid_status = 'success'    
+
         # 獲取壓縮檔內的文件名列表，過濾掉 __MACOSX 目錄
         files_in_zip = [f for f in zip_file.namelist() if not f.startswith('__MACOSX/')]
+        
+        # 檢查文件數量和名稱
+        allowed_files = {'A.txt', 'B.txt', 'C.txt'}
+        
+        # 過濾出壓縮包中根目錄的文件（排除可能存在的子目錄文件）
+        root_files = {os.path.basename(name) for name in files_in_zip if not name.endswith('/')}
+        
+        # 檢查是否包含必須的 A.txt 和 B.txt
+        if 'A.txt' not in root_files or 'B.txt' not in root_files:
+            _msg = "Zip file must contain A.txt and B.txt."
+            _valid_status = 'fail'
+            #raise HTTPException(status_code=400, detail=_msg)
+        
+        # 確認只有允許的文件
+        elif not root_files.issubset(allowed_files):
+            _msg = "Zip file contains invalid files."
+            _valid_status = 'fail'
+            #raise HTTPException(status_code=400, detail=_msg)
 
-       # 設定存儲路徑並創建資料夾
+        # 設定存儲路徑並創建資料夾
         upload_dir = "uploads"
-        os.makedirs(upload_dir, exist_ok=True)
+        try:
+            os.makedirs(upload_dir, exist_ok=True)
+        except OSError as e:
+            raise HTTPException(status_code=500, detail=f"Could not create upload directory: {e}")
+
         
         # 生成唯一的文件名，添加時間戳記
         timestamp = time.strftime("%Y%m%d%H%M%S")
@@ -78,20 +116,28 @@ async def upload_file(
         with open(save_path, "wb") as f:
             f.write(encrypted_contents)        
         
-        # 檢查文件數量和名稱
-        allowed_files = {'A.txt', 'B.txt', 'C.txt'}
+        # 寫入 file table
+        file_obj = _models.File(
+            file_name = zip_filename,
+            valid_status = _valid_status,
+            encryption_key = key,
+            error_msg = _msg,
+            created_dt = time.strftime("%Y-%m-%d %H:%M:%S")
+        )
+        db.add(file_obj)
+        db.commit() 
+        db.refresh(file_obj)  
+
+        _user_id = current_user.id        
         
-        # 過濾出壓縮包中根目錄的文件（排除可能存在的子目錄文件）
-        root_files = {os.path.basename(name) for name in files_in_zip if not name.endswith('/')}
+        # 寫入 upload table
+        upload_obj = _models.Upload(
+            user_id = _user_id,
+            file_id = file_obj.id,
+            created_dt = time.strftime("%Y-%m-%d %H:%M:%S")
+        )
+        db.add(upload_obj)
+        db.commit()
+        db.refresh(upload_obj) 
         
-        # 檢查是否包含必須的 A.txt 和 B.txt
-        if 'A.txt' not in root_files or 'B.txt' not in root_files:
-            raise HTTPException(status_code=200, detail="Zip file must contain A.txt and B.txt.")
-        
-        # 確認只有允許的文件
-        if not root_files.issubset(allowed_files):
-            raise HTTPException(status_code=200, detail="Zip file contains invalid files.") 
-        
- 
-        
-    return {"message": "Files successfully uploaded, validated, and encrypted.", "filename": zip_filename}
+    return {"valid status": _valid_status, "message": _msg, "filename": zip_filename}
